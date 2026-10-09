@@ -48,6 +48,14 @@ OpenSSL 4.2
 
    *Viktor Dukhovni*
 
+ * `SSL_load_client_CA_file()`, `SSL_load_client_CA_file_ex()`,
+   `SSL_add_file_cert_subjects_to_stack()` and
+   `SSL_add_dir_cert_subjects_to_stack()` now accept "TRUSTED CERTIFICATE"
+   PEM blocks in addition to "CERTIFICATE" ones.  Any trust settings are
+   ignored and only the subject name of the certificate is used.
+
+   *Duc Anh Luu*
+
  * `EVP_SKEY_get0_raw_key()` now accepts a NULL key pointer to retrieve only
    the key length.  The length is obtained from the `OSSL_SKEY_PARAM_KEY_LENGTH`
    key parameter without exporting the key, so it is also available for keys

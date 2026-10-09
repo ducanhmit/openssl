@@ -52,6 +52,12 @@ the specific usage as support function for
 L<SSL_CTX_set_client_CA_list(3)>,
 it is not limited to CA certificates.
 
+SSL_load_client_CA_file_ex(), SSL_load_client_CA_file(),
+SSL_add_file_cert_subjects_to_stack() and SSL_add_dir_cert_subjects_to_stack()
+accept both "CERTIFICATE" and "TRUSTED CERTIFICATE" PEM blocks.
+Any trust settings of a trusted certificate are ignored, only its subject
+name is used.
+
 =head1 RETURN VALUES
 
 The following return values can occur for SSL_load_client_CA_file_ex(), and
@@ -109,6 +115,10 @@ L<SSL_CTX_set_client_CA_list(3)>
 
 SSL_load_client_CA_file_ex() and SSL_add_store_cert_subjects_to_stack()
 were added in OpenSSL 3.0.
+
+Support for "TRUSTED CERTIFICATE" PEM blocks in SSL_load_client_CA_file_ex(),
+SSL_load_client_CA_file(), SSL_add_file_cert_subjects_to_stack() and
+SSL_add_dir_cert_subjects_to_stack() was added in OpenSSL 4.2.
 
 =head1 COPYRIGHT
 

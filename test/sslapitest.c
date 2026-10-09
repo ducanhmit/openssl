@@ -13177,8 +13177,60 @@ static int test_ca_names(int tst)
     return testresult;
 }
 
+/*
+ * Test that the client CA name loaders accept "TRUSTED CERTIFICATE" PEM
+ * blocks as well as plain "CERTIFICATE" ones.
+ *
+ * Test 0: SSL_load_client_CA_file_ex() with a trusted certificate
+ * Test 1: SSL_add_file_cert_subjects_to_stack() with a plain certificate
+ *         followed by a trusted certificate
+ */
+static int test_load_client_CA_file(int tst)
+{
+    STACK_OF(X509_NAME) *names = NULL;
+    X509_NAME *root = NULL, *server = NULL;
+    char *trusted = NULL;
+    int testresult = 0;
+
+    if (!TEST_ptr(trusted = test_mk_file_path(certsdir, "root+clientAuth.pem"))
+        || !TEST_ptr(root = X509_NAME_new())
+        || !TEST_true(X509_NAME_add_entry_by_txt(root, "CN", MBSTRING_ASC,
+            (unsigned char *)"Root CA", -1, -1, 0))
+        || !TEST_ptr(server = X509_NAME_new())
+        || !TEST_true(X509_NAME_add_entry_by_txt(server, "CN", MBSTRING_ASC,
+            (unsigned char *)"server.example", -1, -1, 0)))
+        goto end;
+
+    if (tst == 0) {
+        if (!TEST_ptr(names = SSL_load_client_CA_file_ex(trusted, libctx, NULL))
+            || !TEST_int_eq(sk_X509_NAME_num(names), 1)
+            || !TEST_int_eq(X509_NAME_cmp(sk_X509_NAME_value(names, 0), root),
+                0))
+            goto end;
+    } else {
+        if (!TEST_ptr(names = sk_X509_NAME_new_null())
+            || !TEST_true(SSL_add_file_cert_subjects_to_stack(names, cert))
+            || !TEST_true(SSL_add_file_cert_subjects_to_stack(names, trusted))
+            || !TEST_int_eq(sk_X509_NAME_num(names), 2)
+            || !TEST_int_eq(X509_NAME_cmp(sk_X509_NAME_value(names, 0), server),
+                0)
+            || !TEST_int_eq(X509_NAME_cmp(sk_X509_NAME_value(names, 1), root),
+                0))
+            goto end;
+    }
+
+    testresult = 1;
+
+end:
+    sk_X509_NAME_pop_free(names, X509_NAME_free);
+    X509_NAME_free(root);
+    X509_NAME_free(server);
+    OPENSSL_free(trusted);
+    return testresult;
+}
+
 #ifndef OPENSSL_NO_TLS1_2
-static const char *multiblock_cipherlist_data[] = {
+static const char *multiblock_cipherlist_data[]= {
     "AES128-SHA",
     "AES128-SHA256",
     "AES256-SHA",
@@ -18983,6 +19035,7 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_cert_cb, 6);
     ADD_ALL_TESTS(test_client_cert_cb, 2);
     ADD_ALL_TESTS(test_ca_names, 3);
+    ADD_ALL_TESTS(test_load_client_CA_file, 2);
 #ifndef OPENSSL_NO_TLS1_2
     ADD_ALL_TESTS(test_multiblock_write, OSSL_NELEM(multiblock_cipherlist_data));
 #endif
