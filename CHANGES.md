@@ -33,6 +33,14 @@ OpenSSL 4.2
 
 ### Changes between 4.1 and 4.2 [xx XXX xxxx]
 
+ * Added the `sha1`, `sha256`, `sha384` and `sha512` values for the
+   `subjectKeyIdentifier` extension.  `sha256`, `sha384` and `sha512` derive
+   the key identifier from the leftmost 160 bits of the respective hash of the
+   subjectPublicKey, as described in RFC 7093 section 2 (1) to (3), and can be
+   used where SHA-1 is not available.  `sha1` is the same as `hash`.
+
+   *Duc Anh Luu*
+
  * Changed TLS 1.3 clients to offer a PSK, and to attempt 0-RTT early data,
    only when it can actually be used. A resumption ticket or external PSK is
    offered only if some offered ciphersuite shares its handshake digest, and

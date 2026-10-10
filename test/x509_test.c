@@ -447,6 +447,75 @@ err:
     return ret;
 }
 
+/*
+ * Check the subjectKeyIdentifier hash methods: "hash" and "sha1" are the
+ * SHA-1 method of RFC 5280, "sha256", "sha384" and "sha512" are methods 1 to
+ * 3 of RFC 7093 (leftmost 160 bits of the digest of the subjectPublicKey).
+ */
+static int test_skid_hash_methods(void)
+{
+    static const struct {
+        const char *value;
+        const char *md;
+    } methods[] = {
+        { "hash", "SHA1" },
+        { "sha1", "SHA1" },
+        { "sha256", "SHA256" },
+        { "sha384", "SHA384" },
+        { "sha512", "SHA512" },
+    };
+    X509 *x = NULL;
+    X509_EXTENSION *ext = NULL;
+    ASN1_OCTET_STRING *skid = NULL;
+    EVP_MD *md = NULL;
+    X509V3_CTX ctx;
+    const unsigned char *pk;
+    unsigned char dig[EVP_MAX_MD_SIZE];
+    unsigned int diglen;
+    int pklen;
+    size_t i;
+    int ret = 0;
+
+    if (!TEST_ptr(x = X509_new())
+        || !TEST_int_eq(X509_set_pubkey(x, pubkey), 1)
+        || !TEST_true(X509_PUBKEY_get0_param(NULL, &pk, &pklen, NULL,
+            X509_get_X509_PUBKEY(x))))
+        goto err;
+    X509V3_set_ctx(&ctx, NULL, x, NULL, NULL, 0);
+
+    for (i = 0; i < OSSL_NELEM(methods); i++) {
+        TEST_info("subjectKeyIdentifier = %s", methods[i].value);
+        if (!TEST_ptr(md = EVP_MD_fetch(NULL, methods[i].md, NULL))
+            || !TEST_true(EVP_Digest(pk, pklen, dig, &diglen, md, NULL))
+            || !TEST_ptr(ext = X509V3_EXT_conf_nid(NULL, &ctx,
+                             NID_subject_key_identifier,
+                             methods[i].value))
+            || !TEST_ptr(skid = X509V3_EXT_d2i(ext))
+            || !TEST_mem_eq(ASN1_STRING_get0_data(skid),
+                ASN1_STRING_length(skid), dig, 20))
+            goto err;
+        EVP_MD_free(md);
+        md = NULL;
+        X509_EXTENSION_free(ext);
+        ext = NULL;
+        ASN1_OCTET_STRING_free(skid);
+        skid = NULL;
+    }
+
+    /* Unknown digest names are still parsed as hex strings and so rejected */
+    if (!TEST_ptr_null(ext = X509V3_EXT_conf_nid(NULL, &ctx,
+                           NID_subject_key_identifier, "sha3")))
+        goto err;
+
+    ret = 1;
+err:
+    EVP_MD_free(md);
+    X509_EXTENSION_free(ext);
+    ASN1_OCTET_STRING_free(skid);
+    X509_free(x);
+    return ret;
+}
+
 static int test_drop_empty_csr_keyids(void)
 {
     static const unsigned char commonName[] = "test";
@@ -938,6 +1007,7 @@ int setup_tests(void)
     ADD_TEST(test_x509_crl_delete_last_extension);
     ADD_TEST(test_x509_revoked_delete_last_extension);
     ADD_TEST(test_drop_empty_cert_keyids);
+    ADD_TEST(test_skid_hash_methods);
     ADD_TEST(test_drop_empty_csr_keyids);
     ADD_TEST(test_rsaesoaep_spki);
     ADD_TEST(test_x509_verify_with_new);

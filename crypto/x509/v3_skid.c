@@ -51,7 +51,16 @@ ASN1_OCTET_STRING *s2i_ASN1_OCTET_STRING(X509V3_EXT_METHOD *method,
     return oct;
 }
 
-ASN1_OCTET_STRING *ossl_x509_pubkey_hash(X509_PUBKEY *pubkey)
+/* Key identifiers are 160 bits long, see RFC 5280 and RFC 7093 */
+#define KEY_ID_LEN 20
+
+/*
+ * Compute a key identifier from the leftmost 160 bits of the digest |mdname|
+ * of the subjectPublicKey BIT STRING value: method (1) of RFC 5280 section
+ * 4.2.1.2 for SHA-1, and methods (1) to (3) of RFC 7093 section 2 for
+ * SHA-256, SHA-384 and SHA-512.
+ */
+static ASN1_OCTET_STRING *pubkey_hash(X509_PUBKEY *pubkey, const char *mdname)
 {
     ASN1_OCTET_STRING *oct;
     const unsigned char *pk;
@@ -68,7 +77,7 @@ ASN1_OCTET_STRING *ossl_x509_pubkey_hash(X509_PUBKEY *pubkey)
     }
     if (!ossl_x509_PUBKEY_get0_libctx(&libctx, &propq, pubkey))
         return NULL;
-    if ((md = EVP_MD_fetch(libctx, SN_sha1, propq)) == NULL)
+    if ((md = EVP_MD_fetch(libctx, mdname, propq)) == NULL)
         return NULL;
     if ((oct = ASN1_OCTET_STRING_new()) == NULL) {
         EVP_MD_free(md);
@@ -77,7 +86,8 @@ ASN1_OCTET_STRING *ossl_x509_pubkey_hash(X509_PUBKEY *pubkey)
 
     X509_PUBKEY_get0_param(NULL, &pk, &pklen, NULL, pubkey);
     if (EVP_Digest(pk, pklen, pkey_dig, &diglen, md, NULL)
-        && ASN1_OCTET_STRING_set(oct, pkey_dig, diglen)) {
+        && diglen >= KEY_ID_LEN
+        && ASN1_OCTET_STRING_set(oct, pkey_dig, KEY_ID_LEN)) {
         EVP_MD_free(md);
         return oct;
     }
@@ -87,13 +97,28 @@ ASN1_OCTET_STRING *ossl_x509_pubkey_hash(X509_PUBKEY *pubkey)
     return NULL;
 }
 
+ASN1_OCTET_STRING *ossl_x509_pubkey_hash(X509_PUBKEY *pubkey)
+{
+    return pubkey_hash(pubkey, SN_sha1);
+}
+
 static ASN1_OCTET_STRING *s2i_skey_id(X509V3_EXT_METHOD *method,
     X509V3_CTX *ctx, char *str)
 {
+    const char *mdname;
+
     if (strcmp(str, "none") == 0)
         return ASN1_OCTET_STRING_new(); /* dummy */
 
-    if (strcmp(str, "hash") != 0)
+    if (strcmp(str, "hash") == 0 || strcmp(str, "sha1") == 0)
+        mdname = SN_sha1;
+    else if (strcmp(str, "sha256") == 0)
+        mdname = SN_sha256;
+    else if (strcmp(str, "sha384") == 0)
+        mdname = SN_sha384;
+    else if (strcmp(str, "sha512") == 0)
+        mdname = SN_sha512;
+    else
         return s2i_ASN1_OCTET_STRING(method, ctx /* not used */, str);
 
     if (ctx != NULL && (ctx->flags & X509V3_CTX_TEST) != 0)
@@ -104,5 +129,6 @@ static ASN1_OCTET_STRING *s2i_skey_id(X509V3_EXT_METHOD *method,
         return NULL;
     }
 
-    return ossl_x509_pubkey_hash(ctx->subject_cert != NULL ? ctx->subject_cert->cert_info.key : ctx->subject_req->req_info.pubkey);
+    return pubkey_hash(ctx->subject_cert != NULL ? ctx->subject_cert->cert_info.key : ctx->subject_req->req_info.pubkey,
+        mdname);
 }
